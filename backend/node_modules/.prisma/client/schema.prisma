@@ -1,0 +1,224 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Clinica {
+  id_clinica   Int      @id @default(autoincrement())
+  nome_clinica String
+  telefone     String?
+  email        String?
+  cnpj         String?
+  razao_social String?
+  cep          String?
+  logradouro   String?
+  numero       String?
+  complemento  String?
+  bairro       String?
+  cidade       String?
+  uf           String?
+  codigo_ibge  String?
+  plano        String   @default("BASICO")
+  ativo        Boolean  @default(true)
+  criado_em    DateTime @default(now())
+
+  usuarios             Usuario[]
+  profissionais        ProfissionalDaSaude[]
+  pacientes            Paciente[]
+  consultas            Consulta[]
+  procedimentos        Procedimento[]
+  agendas              Agenda[]
+  avaliacoes           Avaliacao[]
+  controle_operacional ControleOperacional[]
+  interacao_robo       InteracaoRobo[]
+  convenios            Convenio[]
+}
+
+model Usuario {
+  id_usuario Int      @id @default(autoincrement())
+  nome       String
+  email      String   @unique
+  senha      String
+  tipo       String // ADMIN, RECEPCIONISTA, PROFISSIONAL
+  ativo      Boolean  @default(true)
+  criado_em  DateTime @default(now())
+
+  id_clinica   Int
+  clinica      Clinica              @relation(fields: [id_clinica], references: [id_clinica])
+  profissional ProfissionalDaSaude?
+}
+
+model Paciente {
+  id_paciente     Int      @id @default(autoincrement())
+  cpf             String   @unique
+  nome            String
+  data_nascimento DateTime
+  email           String
+  telefone        String
+  codigo_ibge     String?
+  cep             String?
+  logradouro      String?
+  numero          String?
+  complemento     String?
+  bairro          String?
+  cidade          String?
+  uf              String?
+  senha           String?
+  ativo           Boolean  @default(true)
+
+  id_clinica     Int
+  clinica        Clinica         @relation(fields: [id_clinica], references: [id_clinica])
+  consultas      Consulta[]
+  interacao_robo InteracaoRobo[]
+}
+
+model ProfissionalDaSaude {
+  id_profissional_saude Int      @id @default(autoincrement())
+  nome_profissional     String
+  imagem_profissional   String?
+  data_nascimento       DateTime
+  cpf                   String   @unique
+  conselho              String?
+  numero_conselho       String?
+  uf_conselho           String?
+  rqe                   String?
+  telefone              String
+  email                 String
+  telemedicina          Boolean  @default(false)
+  especialidade         String?
+  ativo                 Boolean  @default(true)
+
+  id_clinica Int
+  clinica    Clinica    @relation(fields: [id_clinica], references: [id_clinica])
+  usuario_id Int?       @unique
+  usuario    Usuario?   @relation(fields: [usuario_id], references: [id_usuario])
+  consultas  Consulta[]
+  agenda     Agenda[]
+}
+
+model Consulta {
+  id_consulta      Int       @id @default(autoincrement())
+  data_hora_inicio DateTime
+  data_hora_fim    DateTime?
+  valor            Float?
+  telemedicina     Boolean   @default(false)
+  status           String
+  observacoes      String?
+
+  paciente_id     Int
+  profissional_id Int
+  id_clinica      Int
+  id_convenio     Int?
+
+  clinica       Clinica                @relation(fields: [id_clinica], references: [id_clinica])
+  paciente      Paciente               @relation(fields: [paciente_id], references: [id_paciente])
+  profissional  ProfissionalDaSaude    @relation(fields: [profissional_id], references: [id_profissional_saude])
+  procedimentos ConsultaProcedimento[]
+  avaliacoes    Avaliacao[]
+  convenio      Convenio?              @relation(fields: [id_convenio], references: [id_convenio])
+}
+
+model Avaliacao {
+  id_avaliacao         Int      @id @default(autoincrement())
+  consulta_id          Int
+  data_avaliacao       DateTime
+  descricao            String?
+  parecer_profissional String?
+  id_clinica           Int
+
+  clinica  Clinica  @relation(fields: [id_clinica], references: [id_clinica])
+  consulta Consulta @relation(fields: [consulta_id], references: [id_consulta])
+}
+
+model Procedimento {
+  id_procedimento   Int       @id @default(autoincrement())
+  nome_procedimento String    @unique
+  tipo              String
+  valor             Float
+  duracao_minutos   Int
+  telemedicina      Boolean   @default(false)
+  descricao         String?
+  ativo             Boolean   @default(true)
+  criado_em         DateTime  @default(now())
+  atualizado_em     DateTime?
+  id_clinica        Int
+
+  clinica   Clinica                @relation(fields: [id_clinica], references: [id_clinica])
+  consultas ConsultaProcedimento[]
+}
+
+model ConsultaProcedimento {
+  consulta_id     Int
+  procedimento_id Int
+
+  consulta     Consulta     @relation(fields: [consulta_id], references: [id_consulta])
+  procedimento Procedimento @relation(fields: [procedimento_id], references: [id_procedimento])
+
+  @@id([consulta_id, procedimento_id])
+}
+
+model Agenda {
+  id_agenda     Int      @id @default(autoincrement())
+  data          DateTime
+  hora_inicio   DateTime
+  hora_fim      DateTime
+  status        String
+  tipo_bloqueio String?
+  criado_em     DateTime @default(now())
+
+  profissional_id Int
+  id_clinica      Int
+
+  clinica      Clinica             @relation(fields: [id_clinica], references: [id_clinica])
+  profissional ProfissionalDaSaude @relation(fields: [profissional_id], references: [id_profissional_saude])
+}
+
+model ControleOperacional {
+  id_controle     Int      @id @default(autoincrement())
+  id_clinica      Int
+  data_referencia DateTime @default(now()) // por dia, semana ou mês
+
+  pacientes_agendados     Int @default(0)
+  pacientes_nao_agendados Int @default(0)
+  pacientes_faltantes     Int @default(0)
+
+  nps                 Int? // nota média da pesquisa de satisfação
+  total_consultas     Int   @default(0)
+  total_procedimentos Int   @default(0)
+  valor_arrecadado    Float @default(0)
+
+  horas_robo_trabalhadas Float    @default(0) // em horas
+  economia_estimada      Float    @default(0) // em reais
+  criado_em              DateTime @default(now())
+
+  clinica Clinica @relation(fields: [id_clinica], references: [id_clinica])
+}
+
+model InteracaoRobo {
+  id_interacao   Int      @id @default(autoincrement())
+  id_clinica     Int
+  id_paciente    Int
+  tipo           String // 'DUVIDA', 'AGENDAMENTO', 'DOCUMENTO'
+  data_interacao DateTime @default(now())
+  id_convenio    Int?
+
+  paciente Paciente  @relation(fields: [id_paciente], references: [id_paciente])
+  clinica  Clinica   @relation(fields: [id_clinica], references: [id_clinica])
+  convenio Convenio? @relation(fields: [id_convenio], references: [id_convenio])
+}
+
+model Convenio {
+  id_convenio Int      @id @default(autoincrement())
+  nome        String
+  ativo       Boolean  @default(true)
+  id_clinica  Int
+  criado_em   DateTime @default(now())
+
+  clinica         Clinica         @relation(fields: [id_clinica], references: [id_clinica])
+  consultas       Consulta[]
+  interacoes_robo InteracaoRobo[]
+}
