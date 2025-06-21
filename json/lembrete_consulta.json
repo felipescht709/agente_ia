@@ -1,0 +1,185 @@
+{
+  "name": "Lembretes Consultas Diários",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 18 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-daily",
+      "name": "Cron Diário 18h",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:4000/api/consultas/proximas",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "data",
+              "value": "={{ new Date(Date.now() + 24*60*60*1000).toISOString().split('T')[0] }}"
+            },
+            {
+              "name": "status",
+              "value": "AGENDADA"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-appointments",
+      "name": "Buscar Consultas Amanhã",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_BACKEND_API_AUTH_ID",
+          "name": "Backend API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-appointments",
+      "name": "Dividir Consultas",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_ID }}",
+        "to": "={{ $json.paciente.telefone }}",
+        "message": "🔔 *Lembrete de Consulta*\\n\\n👋 Olá, {{ $json.paciente.nome }}!\\n\\n📅 Você tem uma consulta agendada para *amanhã*:\\n\\n🕐 *Horário:* {{ new Date($json.data).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}) }}\\n👨‍⚕️ *Profissional:* Dr(a). {{ $json.profissional.nomeProfissional }}\\n🏥 *Local:* {{ $json.telemedicina ? 'Telemedicina' : ($json.profissional.nomeConsultorio || 'Presencial - Verifique no agendamento') }}\\n\\n⚠️ *Lembrete importante:*\\n• Chegue 15 minutos antes\\n• Traga documento com foto\\n• Para cancelar, avise com 1 hora de antecedência\\n\\n📞 Dúvidas? {{ $env.CLINIC_PHONE }}\\n\\n✅ Responda *SIM {{ $json.id }}* para confirmar presença\\n❌ Responda *CANCELAR {{ $json.id }}* se não puder comparecer",
+        "additionalFields": {}
+      },
+      "id": "send-reminder",
+      "name": "Enviar Lembrete",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "whatsAppBusinessCloud": {
+          "id": "YOUR_WHATSAPP_CREDENTIAL_ID",
+          "name": "WhatsApp Business Cloud"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:4000/api/consultas/{{ $json.id }}/lembrete-enviado",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "lembrete_enviado",
+              "value": "true"
+            },
+            {
+              "name": "data_lembrete",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-reminder-status",
+      "name": "Atualizar Status Lembrete",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_BACKEND_API_AUTH_ID",
+          "name": "Backend API Auth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron Diário 18h": {
+      "main": [
+        [
+          {
+            "node": "Buscar Consultas Amanhã",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Consultas Amanhã": {
+      "main": [
+        [
+          {
+            "node": "Dividir Consultas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dividir Consultas": {
+      "main": [
+        [
+          {
+            "node": "Enviar Lembrete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Lembrete": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Status Lembrete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

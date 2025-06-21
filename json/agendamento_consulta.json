@@ -1,0 +1,284 @@
+{
+  "name": "Agendamento Consulta WhatsApp",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agendamento-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-agendamento",
+      "name": "Webhook Agendamento",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrair e validar dados do agendamento\n// Este webhook será chamado pelo fluxo de Atendimento Inicial ou diretamente\n// Os dados virão do que o paciente digitou ou do contexto passado pelo workflow anterior.\n\nconst body = $input.first().json.body; // Supondo que o body contém o objeto da mensagem WhatsApp\n\nlet messageText;\nlet phone;\n\n// Adaptação para o formato de entrada do WhatsApp Webhook (como no Workflow 1)\ntry {\n  const message = body.entry[0].changes[0].value.messages[0];\n  const contact = body.entry[0].changes[0].value.contacts[0];\n  phone = message.from;\n  messageText = message.text.body;\n} catch (e) {\n  // Fallback para outros formatos, como o Venom-Bot pode enviar\n  if (body.data && body.data.from && body.data.body) {\n    phone = body.data.from.split('@')[0];\n    messageText = body.data.body;\n  } else {\n    throw new Error('Formato de mensagem WhatsApp não reconhecido para agendamento.');\n  }\n}\n\n// Extrair informações da mensagem do paciente\nconst nomeMatch = messageText.match(/nome[:\\s]*(.+)/i);\nconst cpfMatch = messageText.match(/cpf[:\\s]*([\\d.-]+)/i);\nconst horarioMatch = messageText.match(/horário[:\\s]*(\\d{1,2}:\\d{2})/i);\nconst profissionalMatch = messageText.match(/profissional[:\\s]*(.+)/i);\n\nif (!nomeMatch || !cpfMatch || !horarioMatch || !profissionalMatch) {\n  throw new Error('Dados incompletos para agendamento. Por favor, forneça o horário preferido, profissional, seu nome completo e seu CPF.');\n}\n\nreturn [\n  {\n    json: {\n      nome: nomeMatch[1].trim(),\n      cpf: cpfMatch[1].replace(/[.-]/g, ''),\n      telefone: phone,\n      horario_escolhido: horarioMatch[1].trim(),\n      profissional_nome_completo: professionalMatch[1].trim(),\n      status: 'pendente_confirmacao'\n    }\n  }\n];"
+      },
+      "id": "extract-data",
+      "name": "Extrair Dados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:4000/api/pacientes/buscar-ou-criar",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "nome",
+              "value": "={{ $('Extrair Dados').first().json.nome }}"
+            },
+            {
+              "name": "cpf",
+              "value": "={{ $('Extrair Dados').first().json.cpf }}"
+            },
+            {
+              "name": "telefone",
+              "value": "={{ $('Extrair Dados').first().json.telefone }}"
+            },
+            {
+              "name": "email",
+              "value": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-patient",
+      "name": "Buscar/Criar Paciente",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_BACKEND_API_AUTH_ID",
+          "name": "Backend API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:4000/api/profissionais?nome={{ encodeURIComponent($('Extrair Dados').first().json.profissional_nome_completo) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": [],
+        "options": {}
+      },
+      "id": "find-professional",
+      "name": "Buscar Profissional",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_BACKEND_API_AUTH_ID",
+          "name": "Backend API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:4000/api/consultas",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "paciente_id",
+              "value": "={{ $('Buscar/Criar Paciente').first().json.data.id_paciente }}"
+            },
+            {
+              "name": "profissional_id",
+              "value": "={{ $('Buscar Profissional').first().json.data[0].id_profissional_saude }}"
+            },
+            {
+              "name": "data",
+              "value": "={{ new Date().toISOString().split('T')[0] }}"
+            },
+            {
+              "name": "hora",
+              "value": "={{ $('Extrair Dados').first().json.horario_escolhido }}"
+            },
+            {
+              "name": "valor",
+              "value": "0"
+            },
+            {
+              "name": "telemedicina",
+              "value": "false"
+            },
+            {
+              "name": "status",
+              "value": "AGENDADA"
+            },
+            {
+              "name": "observacoes",
+              "value": "Agendado via WhatsApp Bot"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "create-appointment",
+      "name": "Criar Consulta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_BACKEND_API_AUTH_ID",
+          "name": "Backend API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_ID }}",
+        "to": "={{ $('Extrair Dados').first().json.telefone }}",
+        "message": "✅ *Consulta Agendada com Sucesso!*\\n\\n👤 *Paciente:* {{ $('Extrair Dados').first().json.nome }}\\n📅 *Data:* {{ new Date($json.data).toLocaleDateString('pt-BR') }}\\n🕐 *Horário:* {{ $('Extrair Dados').first().json.horario_escolhido }}\\n👨‍⚕️ *Profissional:* Dr(a). {{ $('Extrair Dados').first().json.profissional_nome_completo }}\\n\\n📋 *Protocolo:* #{{ $json.id }}\\n\\n⚠️ *Importante:*\\n• Chegue 15 minutos antes\\n• Traga documento com foto\\n• Em caso de cancelamento, avise com 1 hora de antecedência\\n\\n📞 Dúvidas? Entre em contato: {{ $env.CLINIC_PHONE }}",
+        "additionalFields": {}
+      },
+      "id": "send-confirmation",
+      "name": "Enviar Confirmação",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "credentials": {
+        "whatsAppBusinessCloud": {
+          "id": "YOUR_WHATSAPP_CREDENTIAL_ID",
+          "name": "WhatsApp Business Cloud"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Agendamento processado"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Agendamento": {
+      "main": [
+        [
+          {
+            "node": "Extrair Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Dados": {
+      "main": [
+        [
+          {
+            "node": "Buscar/Criar Paciente",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Buscar Profissional",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar/Criar Paciente": {
+      "main": [
+        [
+          {
+            "node": "Criar Consulta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Profissional": {
+      "main": [
+        [
+          {
+            "node": "Criar Consulta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Consulta": {
+      "main": [
+        [
+          {
+            "node": "Enviar Confirmação",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Confirmação": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

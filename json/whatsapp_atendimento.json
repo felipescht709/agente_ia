@@ -1,0 +1,357 @@
+{
+  "name": "WhatsApp Atendimento Clínica",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-whatsapp",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extrair dados da mensagem do WhatsApp\nconst body = $input.first().json.body;\n\n// Verifique a estrutura da mensagem do Venom-Bot ou da API do WhatsApp.\n// O corpo do Venom-Bot pode ser diferente da Meta API oficial.\n// Exemplo para Venom-Bot: body.data.from, body.data.body\n// Exemplo para Meta API (que é a base do seu JSON): body.entry[0].changes[0].value.messages[0]\n\nlet phone;\nlet messageText;\nlet contactName = 'Paciente'; // Nome padrão caso não encontre\n\n// Tentativa de extrair do formato Meta API (do JSON fornecido)\ntry {\n  const message = body.entry[0].changes[0].value.messages[0];\n  const contact = body.entry[0].changes[0].value.contacts[0];\n  phone = message.from;\n  messageText = message.text.body;\n  contactName = contact.profile.name;\n} catch (e) {\n  // Fallback para outros formatos, como o Venom-Bot pode enviar\n  console.log('Tentando formato alternativo para WhatsApp body:', body);\n  if (body.data && body.data.from && body.data.body) {\n    phone = body.data.from.split('@')[0]; // Remove o @c.us\n    messageText = body.data.body;\n    contactName = body.data.pushname || phone; // Usa pushname ou phone\n  } else {\n    throw new Error('Formato de mensagem WhatsApp não reconhecido.');\n  }\n}\n\nreturn [\n  {\n    json: {\n      phone: phone,\n      name: contactName,\n      message_text: messageText,\n      message_id: message.id || 'N/A',\n      timestamp: message.timestamp || Date.now() / 1000\n    }\n  }\n];"
+      },
+      "id": "process-message",
+      "name": "Processar Mensagem",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "model": "gpt-3.5-turbo",
+        "messages": {
+          "messageValues": [
+            {
+              "role": "system",
+              "content": "Você é um assistente virtual da Clínica {{ $env.CLINIC_NAME || 'Sua Clínica' }}. Suas funções são:\\n1. Responder dúvidas sobre horários, procedimentos e localização\\n2. Identificar se o paciente quer agendar consulta\\n3. Fornecer informações gerais sobre saúde\\n4. Ser sempre educado e profissional\\n\\nRegras:\\n- Não forneça diagnósticos médicos\\n- Sempre sugira consulta presencial para questões de saúde\\n- Seja claro e objetivo nas respostas\\n- Use linguagem acessível\\n- Se identificar claramente a intenção de agendamento de consulta, responda *exatamente* com a palavra-chave: 'AGENDAR_CONSULTA'\\n- Se não conseguir atender ou identificar a intenção, responda com: 'DESVIAR_HUMANO'\\n\\nInformações da clínica:\\n- Horário: Segunda a Sexta, 8h às 18h\\n- Endereço: [ENDEREÇO_CLINICA - EX: Rua das Rosas, 450, Centro, Chapecó, SC]\\n- Telefone: {{ $env.CLINIC_PHONE || '(XX) XXXXX-XXXX' }}"
+            },
+            {
+              "role": "user",
+              "content": "={{ $('Processar Mensagem').first().json.message_text }}"
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 150
+        },
+        "llmModel": "chat",
+        "openAiApiVersion": "v1"
+      },
+      "id": "chatgpt-analysis",
+      "name": "ChatGPT Análise",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [680, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.choices[0].message.content }}",
+              "rightValue": "AGENDAR_CONSULTA",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-intent-agendamento",
+      "name": "Verificar Intenção Agendamento",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.choices[0].message.content }}",
+              "rightValue": "DESVIAR_HUMANO",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "check-intent-desviar-humano",
+      "name": "Verificar Intenção Desviar Humano",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 400]
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:4000/api/agenda/disponibilidade",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "dataInicio",
+              "value": "={{ new Date().toISOString().split('T')[0] }}"
+            },
+            {
+              "name": "dataFim",
+              "value": "={{ new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] }}"
+            },
+            {
+              "name": "disponivelParaAgendamento",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "check-availability",
+      "name": "Verificar Disponibilidade",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_BACKEND_API_AUTH_ID",
+          "name": "Backend API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_ID }}",
+        "to": "={{ $('Processar Mensagem').first().json.phone }}",
+        "message": "={{ $json.choices[0].message.content }}",
+        "additionalFields": {}
+      },
+      "id": "send-general-response",
+      "name": "Enviar Resposta Geral",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "credentials": {
+        "whatsAppBusinessCloud": {
+          "id": "YOUR_WHATSAPP_CREDENTIAL_ID",
+          "name": "WhatsApp Business Cloud"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_ID }}",
+        "to": "={{ $('Processar Mensagem').first().json.phone }}",
+        "message": "Ótimo! Vou te ajudar a agendar sua consulta. Temos os seguintes horários disponíveis:\\n\\n{{ $json.data.map(h => `📅 ${new Date(h.data).toLocaleDateString('pt-BR')} às ${h.hora_inicio.substring(0, 5)} - Dr(a). ${h.profissional_nome}`).join('\\n') || 'Nenhum horário disponível no momento.' }}\\n\\nPara confirmar, por favor, me informe:\\n1️⃣ Qual horário prefere (Ex: 10:00)?\\n2️⃣ Com qual profissional (Ex: Dr. João)?\\n3️⃣ Seu nome completo\\n4️⃣ Seu CPF (apenas números)",
+        "additionalFields": {}
+      },
+      "id": "send-scheduling-options",
+      "name": "Enviar Opções Agendamento",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1340, 100],
+      "credentials": {
+        "whatsAppBusinessCloud": {
+          "id": "YOUR_WHATSAPP_CREDENTIAL_ID",
+          "name": "WhatsApp Business Cloud"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "OK"
+      },
+      "id": "webhook-response",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_ID }}",
+        "to": "={{ $('Processar Mensagem').first().json.phone }}",
+        "message": "Desculpe, não consegui entender completamente. Por favor, reformule sua pergunta ou aguarde que um atendente humano entrará em contato em horário comercial. Agradeço a sua compreensão.",
+        "additionalFields": {}
+      },
+      "id": "send-human-fallback",
+      "name": "Enviar Fallback Humano",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1120, 500],
+      "credentials": {
+        "whatsAppBusinessCloud": {
+          "id": "YOUR_WHATSAPP_CREDENTIAL_ID",
+          "name": "WhatsApp Business Cloud"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "Processar Mensagem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Mensagem": {
+      "main": [
+        [
+          {
+            "node": "ChatGPT Análise",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ChatGPT Análise": {
+      "main": [
+        [
+          {
+            "node": "Verificar Intenção Agendamento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Verificar Intenção Desviar Humano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Intenção Agendamento": {
+      "main": [
+        [
+          {
+            "node": "Verificar Disponibilidade",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "else": [
+        [
+          {
+            "node": "Enviar Resposta Geral",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Intenção Desviar Humano": {
+      "main": [
+        [
+          {
+            "node": "Enviar Fallback Humano",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ],
+      "else": [
+        [
+          null,
+          {
+            "node": "send-general-response",
+            "type": "else",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar Disponibilidade": {
+      "main": [
+        [
+          {
+            "node": "Enviar Opções Agendamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Resposta Geral": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Opções Agendamento": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Fallback Humano": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

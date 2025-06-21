@@ -1,0 +1,170 @@
+{
+  "name": "Pesquisa Satisfação NPS",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * *"
+            }
+          ]
+        }
+      },
+      "id": "cron-nps",
+      "name": "Cron Diário 10h",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:4000/api/consultas/realizadas-ontem",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fetch-completed",
+      "name": "Buscar Consultas Realizadas Ontem",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_BACKEND_API_AUTH_ID",
+          "name": "Backend API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "split-completed",
+      "name": "Dividir Consultas",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_ID }}",
+        "to": "={{ $json.paciente.telefone }}",
+        "message": "⭐ *Pesquisa de Satisfação*\\n\\n👋 Olá, {{ $json.paciente.nome }}!\\n\\nEsperamos que sua consulta com Dr(a). {{ $json.profissional.nomeProfissional }} tenha sido excelente!\\n\\n🎯 *Sua opinião é muito importante para nós.*\\n\\nEm uma escala de 0 a 10, o quanto você recomendaria nossa clínica para um amigo ou familiar?\\n\\n*Responda apenas com um número de 0 a 10: (Ex: 9)*\\n\\n💬 Após sua nota, fique à vontade para deixar um comentário sobre sua experiência.\\n\\n🙏 Obrigado pelo seu tempo! *ID da Consulta: {{ $json.id }}*",
+        "additionalFields": {}
+      },
+      "id": "send-nps",
+      "name": "Enviar Pesquisa NPS",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "whatsAppBusinessCloud": {
+          "id": "YOUR_WHATSAPP_CREDENTIAL_ID",
+          "name": "WhatsApp Business Cloud"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://localhost:4000/api/consultas/{{ $json.id }}/nps-enviado",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": [
+          {
+            "name": "nps_enviado",
+            "value": "true"
+          },
+          {
+            "name": "data_nps_enviado",
+            "value": "={{ new Date().toISOString() }}"
+          }
+        ],
+        "options": {}
+      },
+      "id": "update-nps-status",
+      "name": "Atualizar Status NPS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_BACKEND_API_AUTH_ID",
+          "name": "Backend API Auth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Cron Diário 10h": {
+      "main": [
+        [
+          {
+            "node": "Buscar Consultas Realizadas Ontem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Consultas Realizadas Ontem": {
+      "main": [
+        [
+          {
+            "node": "Dividir Consultas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dividir Consultas": {
+      "main": [
+        [
+          {
+            "node": "Enviar Pesquisa NPS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enviar Pesquisa NPS": {
+      "main": [
+        [
+          {
+            "node": "Atualizar Status NPS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
