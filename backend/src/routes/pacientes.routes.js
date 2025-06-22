@@ -8,6 +8,7 @@ router.post('/', verificarToken, PacientesController.criar);
 router.get('/', verificarToken, PacientesController.listar);
 router.get('/:id', verificarToken, PacientesController.detalhar);
 router.put('/:id', verificarToken, PacientesController.atualizar);
-router.delete('/:id', verificarToken, PacientesController.inativar);
+router.patch('/:id/inativar', verificarToken, PacientesController.inativar);
+router.post('/buscar-ou-criar', PacientesController.buscarOuCriar); 
 
 module.exports = { PacientesRoutes: router };

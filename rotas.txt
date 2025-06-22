@@ -1,0 +1,11 @@
+rodar backend node index.js
+
+rodar frontend 
+
+rodar n8n  
+
+rodar o Docker 
+
+rodar ollama ollama run llama2
+
+rodar bot node bot.js 

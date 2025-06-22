@@ -1,2 +1,3 @@
-2025/06/21-10:00:30.614 432c Creating DB C:\projetos\agente_ia\botwhatsapp\tokens\agente-ia\Default\Session Storage since it was missing.
-2025/06/21-10:00:30.627 432c Reusing MANIFEST C:\projetos\agente_ia\botwhatsapp\tokens\agente-ia\Default\Session Storage/MANIFEST-000001
+2025/06/21-17:39:51.925 1a08 Reusing MANIFEST C:\projetos\agente_ia\botwhatsapp\tokens\agente-ia\Default\Session Storage/MANIFEST-000001
+2025/06/21-17:39:51.926 1a08 Recovering log #3
+2025/06/21-17:39:51.930 1a08 Reusing old log C:\projetos\agente_ia\botwhatsapp\tokens\agente-ia\Default\Session Storage/000003.log 

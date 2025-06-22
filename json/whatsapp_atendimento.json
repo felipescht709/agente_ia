@@ -17,7 +17,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Extrair dados da mensagem do WhatsApp\nconst body = $input.first().json.body;\n\n// Verifique a estrutura da mensagem do Venom-Bot ou da API do WhatsApp.\n// O corpo do Venom-Bot pode ser diferente da Meta API oficial.\n// Exemplo para Venom-Bot: body.data.from, body.data.body\n// Exemplo para Meta API (que é a base do seu JSON): body.entry[0].changes[0].value.messages[0]\n\nlet phone;\nlet messageText;\nlet contactName = 'Paciente'; // Nome padrão caso não encontre\n\n// Tentativa de extrair do formato Meta API (do JSON fornecido)\ntry {\n  const message = body.entry[0].changes[0].value.messages[0];\n  const contact = body.entry[0].changes[0].value.contacts[0];\n  phone = message.from;\n  messageText = message.text.body;\n  contactName = contact.profile.name;\n} catch (e) {\n  // Fallback para outros formatos, como o Venom-Bot pode enviar\n  console.log('Tentando formato alternativo para WhatsApp body:', body);\n  if (body.data && body.data.from && body.data.body) {\n    phone = body.data.from.split('@')[0]; // Remove o @c.us\n    messageText = body.data.body;\n    contactName = body.data.pushname || phone; // Usa pushname ou phone\n  } else {\n    throw new Error('Formato de mensagem WhatsApp não reconhecido.');\n  }\n}\n\nreturn [\n  {\n    json: {\n      phone: phone,\n      name: contactName,\n      message_text: messageText,\n      message_id: message.id || 'N/A',\n      timestamp: message.timestamp || Date.now() / 1000\n    }\n  }\n];"
+        "jsCode": "// Extrair dados da mensagem que o Backend encaminhou (já com clientId)\\nconst body = $input.first().json.body;\\n\\n// O backend que enviou o clientId e o objeto original da mensagem do Venom-Bot\\nconst clientId = body.clientId; // Este é o id_clinica\\nconst message = body.message; // Este é o objeto 'data' original do Venom-Bot\\n\\nlet phone;\\nlet messageText;\\nlet contactName = 'Paciente';\\n\\n// Extrai os campos do objeto 'message' recebido do backend\\nphone = message.from ? message.from.split('@')[0] : 'N/A'; // Remove @c.us\\nmessageText = message.body;\\ncontactName = message.pushname || message.from; // Usa pushname ou o número como nome\\n\\nreturn [\\n  {\\n    json: {\\n      clientId: clientId, // ID da Clínica (importante para todas as chamadas ao backend)\\n      phone: phone,\\n      name: contactName,\\n      message_text: messageText,\\n      message_id: message.id || 'N/A',\\n      timestamp: message.t || Date.now() / 1000\\n    }\\n  }\\n];"
       },
       "id": "process-message",
       "name": "Processar Mensagem",
@@ -27,35 +27,42 @@
     },
     {
       "parameters": {
-        "model": "gpt-3.5-turbo",
-        "messages": {
-          "messageValues": [
-            {
-              "role": "system",
-              "content": "Você é um assistente virtual da Clínica {{ $env.CLINIC_NAME || 'Sua Clínica' }}. Suas funções são:\\n1. Responder dúvidas sobre horários, procedimentos e localização\\n2. Identificar se o paciente quer agendar consulta\\n3. Fornecer informações gerais sobre saúde\\n4. Ser sempre educado e profissional\\n\\nRegras:\\n- Não forneça diagnósticos médicos\\n- Sempre sugira consulta presencial para questões de saúde\\n- Seja claro e objetivo nas respostas\\n- Use linguagem acessível\\n- Se identificar claramente a intenção de agendamento de consulta, responda *exatamente* com a palavra-chave: 'AGENDAR_CONSULTA'\\n- Se não conseguir atender ou identificar a intenção, responda com: 'DESVIAR_HUMANO'\\n\\nInformações da clínica:\\n- Horário: Segunda a Sexta, 8h às 18h\\n- Endereço: [ENDEREÇO_CLINICA - EX: Rua das Rosas, 450, Centro, Chapecó, SC]\\n- Telefone: {{ $env.CLINIC_PHONE || '(XX) XXXXX-XXXX' }}"
-            },
-            {
-              "role": "user",
-              "content": "={{ $('Processar Mensagem').first().json.message_text }}"
-            }
-          ]
-        },
-        "options": {
-          "temperature": 0.7,
-          "maxTokens": 150
-        },
-        "llmModel": "chat",
-        "openAiApiVersion": "v1"
+        "url": "http://host.docker.internal:4000/api/ai/analyzeMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+          }
+        ],
+        "sendBody": true,
+        "bodyParameters": [  
+          {
+            "name": "clientId",
+            "value": "={{ $('Processar Mensagem').first().json.clientId }}"
+          },
+          {
+            "name": "messageText",
+            "value": "={{ $('Processar Mensagem').first().json.message_text }}"
+          },
+          {
+            "name": "systemPrompt",
+            "value": "Você é um assistente virtual da Clínica {{ $env.CLINIC_NAME || 'Sua Clínica' }}. Suas funções são:\\n1. Responder dúvidas sobre horários, procedimentos e localização\\n2. Identificar se o paciente quer agendar consulta\\n3. Fornecer informações gerais sobre saúde\\n4. Ser sempre educado e profissional\\n\\nRegras:\\n- Não forneça diagnósticos médicos\\n- Sempre sugira consulta presencial para questões de saúde\\n- Seja claro e objetivo nas respostas\\n- Use linguagem acessível\\n- Se identificar claramente a intenção de agendamento de consulta, responda *exatamente* com a palavra-chave: 'AGENDAR_CONSULTA'\\n- Se não conseguir atender ou identificar a intenção, responda com: 'DESVIAR_HUMANO'\\n\\nInformações da clínica:\\n- Horário: Segunda a Sexta, 8h às 18h\\n- Endereço: [ENDEREÇO_CLINICA - EX: Rua das Rosas, 450, Centro, Chapecó, SC]\\n- Telefone: {{ $env.CLINIC_PHONE || '(XX) XXXXX-XXXX' }}"
+          }
+        ],
+        "options": {}
       },
-      "id": "chatgpt-analysis",
-      "name": "ChatGPT Análise",
-      "type": "n8n-nodes-base.openAi",
-      "typeVersion": 1,
+      "id": "chamar-ia-para-analise",
+      "name": "Chamar IA para Análise",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [680, 300],
       "credentials": {
-        "openAiApi": {
-          "id": "YOUR_OPENAI_CREDENTIAL_ID",
-          "name": "OpenAI API"
+        "httpHeaderAuth": {
+          "id": "hLqrUhAwdSuSf2LS",
+          "name": "AuthBackendClinica"
         }
       }
     },
@@ -69,7 +76,7 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $json.choices[0].message.content }}",
+              "leftValue": "={{ $json.response }}",
               "rightValue": "AGENDAR_CONSULTA",
               "operator": {
                 "type": "string",
@@ -80,7 +87,7 @@
           "combinator": "and"
         }
       },
-      "id": "check-intent-agendamento",
+      "id": "verificar-intencao-agendamento",
       "name": "Verificar Intenção Agendamento",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -96,7 +103,7 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $json.choices[0].message.content }}",
+              "leftValue": "={{ $json.response }}",
               "rightValue": "DESVIAR_HUMANO",
               "operator": {
                 "type": "string",
@@ -107,7 +114,7 @@
           "combinator": "and"
         }
       },
-      "id": "check-intent-desviar-humano",
+      "id": "verificar-intencao-desviar-humano",
       "name": "Verificar Intenção Desviar Humano",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
@@ -115,84 +122,128 @@
     },
     {
       "parameters": {
-        "url": "=http://localhost:4000/api/agenda/disponibilidade",
+        "url": "http://host.docker.internal:4000/api/agenda/disponibilidade",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
-            }
-          ]
-        },
+        "headerParameters": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+          }
+        ],
         "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "dataInicio",
-              "value": "={{ new Date().toISOString().split('T')[0] }}"
-            },
-            {
-              "name": "dataFim",
-              "value": "={{ new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] }}"
-            },
-            {
-              "name": "disponivelParaAgendamento",
-              "value": "true"
-            }
-          ]
-        },
+        "queryParameters": [  
+          {
+            "name": "clientId",
+            "value": "={{ $('Processar Mensagem').first().json.clientId }}"
+          },
+          {
+            "name": "dataInicio",
+            "value": "={{ new Date().toISOString().split('T')[0] }}"
+          },
+          {
+            "name": "dataFim",
+            "value": "={{ new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] }}"
+          },
+          {
+            "name": "disponivelParaAgendamento",
+            "value": "true"
+          }
+        ],
         "options": {}
       },
-      "id": "check-availability",
+      "id": "verificar-disponibilidade",
       "name": "Verificar Disponibilidade",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1120, 100],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "YOUR_BACKEND_API_AUTH_ID",
-          "name": "Backend API Auth"
+          "id": "hLqrUhAwdSuSf2LS",
+          "name": "AuthBackendClinica"
         }
       }
     },
     {
       "parameters": {
-        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_ID }}",
-        "to": "={{ $('Processar Mensagem').first().json.phone }}",
-        "message": "={{ $json.choices[0].message.content }}",
-        "additionalFields": {}
+        "url": "http://host.docker.internal:4000/api/whatsapp/sendMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+          }
+        ],
+        "sendBody": true,
+        "bodyParameters": [  
+          {
+            "name": "clientId",
+            "value": "={{ $('Processar Mensagem').first().json.clientId }}"
+          },
+          {
+            "name": "to",
+            "value": "={{ $('Processar Mensagem').first().json.phone }}"
+          },
+          {
+            "name": "message",
+            "value": "={{ $node['Chamar IA para Análise'].json.response }}"
+          }
+        ],
+        "options": {}
       },
-      "id": "send-general-response",
+      "id": "enviar-resposta-geral",
       "name": "Enviar Resposta Geral",
-      "type": "n8n-nodes-base.whatsApp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [1120, 300],
       "credentials": {
-        "whatsAppBusinessCloud": {
-          "id": "YOUR_WHATSAPP_CREDENTIAL_ID",
-          "name": "WhatsApp Business Cloud"
+        "httpHeaderAuth": {
+          "id": "hLqrUhAwdSuSf2LS",
+          "name": "AuthBackendClinica"
         }
       }
     },
     {
       "parameters": {
-        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_ID }}",
-        "to": "={{ $('Processar Mensagem').first().json.phone }}",
-        "message": "Ótimo! Vou te ajudar a agendar sua consulta. Temos os seguintes horários disponíveis:\\n\\n{{ $json.data.map(h => `📅 ${new Date(h.data).toLocaleDateString('pt-BR')} às ${h.hora_inicio.substring(0, 5)} - Dr(a). ${h.profissional_nome}`).join('\\n') || 'Nenhum horário disponível no momento.' }}\\n\\nPara confirmar, por favor, me informe:\\n1️⃣ Qual horário prefere (Ex: 10:00)?\\n2️⃣ Com qual profissional (Ex: Dr. João)?\\n3️⃣ Seu nome completo\\n4️⃣ Seu CPF (apenas números)",
-        "additionalFields": {}
+        "url": "http://host.docker.internal:4000/api/whatsapp/sendMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+          }
+        ],
+        "sendBody": true,
+        "bodyParameters": [  
+          {
+            "name": "clientId",
+            "value": "={{ $('Processar Mensagem').first().json.clientId }}"
+          },
+          {
+            "name": "to",
+            "value": "={{ $('Processar Mensagem').first().json.phone }}"
+          },
+          {
+            "name": "message",
+            "value": "Ótimo! Vou te ajudar a agendar sua consulta. Temos os seguintes horários disponíveis:\\n\\n{{ ($json.data && $json.data.length > 0) ? $json.data.map(h => `📅 ${new Date(h.data).toLocaleDateString('pt-BR')} às ${h.hora_inicio.substring(0, 5)} - Dr(a). ${h.profissional_nome}`).join('\\n') : 'Nenhum horário disponível no momento.' }}\\n\\nPara confirmar, por favor, me informe:\\n1️⃣ Qual horário prefere (Ex: 10:00)?\\n2️⃣ Com qual profissional (Ex: Dr. João)?\\n3️⃣ Seu nome completo\\n4️⃣ Seu CPF (apenas números)"
+          }
+        ],
+        "options": {}
       },
-      "id": "send-scheduling-options",
+      "id": "enviar-opcoes-agendamento",
       "name": "Enviar Opções Agendamento",
-      "type": "n8n-nodes-base.whatsApp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [1340, 100],
       "credentials": {
-        "whatsAppBusinessCloud": {
-          "id": "YOUR_WHATSAPP_CREDENTIAL_ID",
-          "name": "WhatsApp Business Cloud"
+        "httpHeaderAuth": {
+          "id": "hLqrUhAwdSuSf2LS",
+          "name": "AuthBackendClinica"
         }
       }
     },
@@ -209,20 +260,42 @@
     },
     {
       "parameters": {
-        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_ID }}",
-        "to": "={{ $('Processar Mensagem').first().json.phone }}",
-        "message": "Desculpe, não consegui entender completamente. Por favor, reformule sua pergunta ou aguarde que um atendente humano entrará em contato em horário comercial. Agradeço a sua compreensão.",
-        "additionalFields": {}
+        "url": "http://host.docker.internal:4000/api/whatsapp/sendMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+          }
+        ],
+        "sendBody": true,
+        "bodyParameters": [  
+          {
+            "name": "clientId",
+            "value": "={{ $('Processar Mensagem').first().json.clientId }}"
+          },
+          {
+            "name": "to",
+            "value": "={{ $('Processar Mensagem').first().json.phone }}"
+          },
+          {
+            "name": "message",
+            "value": "Desculpe, não consegui entender completamente. Por favor, reformule sua pergunta ou aguarde que um atendente humano entrará em contato em horário comercial. Agradeço a sua compreensão."
+          }
+        ],
+        "options": {}
       },
-      "id": "send-human-fallback",
+      "id": "enviar-fallback-humano",
       "name": "Enviar Fallback Humano",
-      "type": "n8n-nodes-base.whatsApp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [1120, 500],
       "credentials": {
-        "whatsAppBusinessCloud": {
-          "id": "YOUR_WHATSAPP_CREDENTIAL_ID",
-          "name": "WhatsApp Business Cloud"
+        "httpHeaderAuth": {
+          "id": "hLqrUhAwdSuSf2LS",
+          "name": "AuthBackendClinica"
         }
       }
     }
@@ -243,14 +316,14 @@
       "main": [
         [
           {
-            "node": "ChatGPT Análise",
+            "node": "Chamar IA para Análise",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "ChatGPT Análise": {
+    "Chamar IA para Análise": {
       "main": [
         [
           {
@@ -300,9 +373,8 @@
       ],
       "else": [
         [
-          null,
           {
-            "node": "send-general-response",
+            "node": "Enviar Resposta Geral",
             "type": "else",
             "index": 0
           }

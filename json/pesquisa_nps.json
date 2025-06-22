@@ -21,29 +21,34 @@
     },
     {
       "parameters": {
-        "url": "=http://localhost:4000/api/consultas/realizadas-ontem",
+        "url": "http://host.docker.internal:4000/api/consultas/buscarRealizadasOntem",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
-            }
-          ]
-        },
+        "headerParameters": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+          }
+        ],
+        "sendQuery": true,
+        "queryParameters": [  
+          {
+            "name": "clientId",
+            "value": "minha_clinica_teste_id"
+          }
+        ],
         "options": {}
       },
-      "id": "fetch-completed",
+      "id": "buscar-consultas-realizadas-ontem",
       "name": "Buscar Consultas Realizadas Ontem",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [460, 300],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "YOUR_BACKEND_API_AUTH_ID",
-          "name": "Backend API Auth"
+          "id": "hLqrUhAwdSuSf2LS",
+          "name": "AuthBackendClinica"
         }
       }
     },
@@ -52,7 +57,7 @@
         "batchSize": 1,
         "options": {}
       },
-      "id": "split-completed",
+      "id": "dividir-consultas",
       "name": "Dividir Consultas",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -60,43 +65,67 @@
     },
     {
       "parameters": {
-        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_ID }}",
-        "to": "={{ $json.paciente.telefone }}",
-        "message": "⭐ *Pesquisa de Satisfação*\\n\\n👋 Olá, {{ $json.paciente.nome }}!\\n\\nEsperamos que sua consulta com Dr(a). {{ $json.profissional.nomeProfissional }} tenha sido excelente!\\n\\n🎯 *Sua opinião é muito importante para nós.*\\n\\nEm uma escala de 0 a 10, o quanto você recomendaria nossa clínica para um amigo ou familiar?\\n\\n*Responda apenas com um número de 0 a 10: (Ex: 9)*\\n\\n💬 Após sua nota, fique à vontade para deixar um comentário sobre sua experiência.\\n\\n🙏 Obrigado pelo seu tempo! *ID da Consulta: {{ $json.id }}*",
-        "additionalFields": {}
+        "url": "http://host.docker.internal:4000/api/whatsapp/sendMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+          }
+        ],
+        "sendBody": true,
+        "bodyParameters": [  
+          {
+            "name": "clientId",
+            "value": "={{ $('Buscar Consultas Realizadas Ontem').first().json.clientId || 'minha_clinica_teste_id' }}"
+          },
+          {
+            "name": "to",
+            "value": "={{ $json.paciente.telefone }}"
+          },
+          {
+            "name": "message",
+            "value": "⭐ *Pesquisa de Satisfação*\\n\\n👋 Olá, {{ $json.paciente.nome }}!\\n\\nEsperamos que sua consulta com Dr(a). {{ $json.profissional.nome_profissional }} tenha sido excelente!\\n\\n🎯 *Sua opinião é muito importante para nós.*\\n\\nEm uma escala de 0 a 10, o quanto você recomendaria nossa clínica para um amigo ou familiar?\\n\\n*Responda apenas com um número de 0 a 10: (Ex: 9)*\\n\\n💬 Após sua nota, fique à vontade para deixar um comentário sobre sua experiência.\\n\\n🙏 Obrigado pelo seu tempo! *ID da Consulta: {{ $json.id_consulta }}*"
+          }
+        ],
+        "options": {}
       },
-      "id": "send-nps",
+      "id": "enviar-pesquisa-nps",
       "name": "Enviar Pesquisa NPS",
-      "type": "n8n-nodes-base.whatsApp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [900, 300],
       "credentials": {
-        "whatsAppBusinessCloud": {
-          "id": "YOUR_WHATSAPP_CREDENTIAL_ID",
-          "name": "WhatsApp Business Cloud"
+        "httpHeaderAuth": {
+          "id": "hLqrUhAwdSuSf2LS",
+          "name": "AuthBackendClinica"
         }
       }
     },
     {
       "parameters": {
-        "url": "=http://localhost:4000/api/consultas/{{ $json.id }}/nps-enviado",
+        "url": "http://host.docker.internal:4000/api/consultas/{{ $json.id_consulta }}/nps-enviado",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
+        "headerParameters": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
         "sendBody": true,
-        "bodyParameters": [
+        "bodyParameters": [  
+          {
+            "name": "clientId",
+            "value": "={{ $('Buscar Consultas Realizadas Ontem').first().json.clientId || 'minha_clinica_teste_id' }}"
+          },
           {
             "name": "nps_enviado",
             "value": "true"
@@ -108,15 +137,15 @@
         ],
         "options": {}
       },
-      "id": "update-nps-status",
+      "id": "atualizar-status-nps",
       "name": "Atualizar Status NPS",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1120, 300],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "YOUR_BACKEND_API_AUTH_ID",
-          "name": "Backend API Auth"
+          "id": "hLqrUhAwdSuSf2LS",
+          "name": "AuthBackendClinica"
         }
       }
     }
@@ -133,7 +162,7 @@
         ]
       ]
     },
-    "Buscar Consultas Realizadas Ontem": {
+    "Buscar Consultas Realizadas Ontem": { 
       "main": [
         [
           {

@@ -1,2 +1,3 @@
-2025/06/21-10:00:30.626 2ae8 Creating DB C:\projetos\agente_ia\botwhatsapp\tokens\agente-ia\Default\shared_proto_db since it was missing.
-2025/06/21-10:00:30.628 2ae8 Reusing MANIFEST C:\projetos\agente_ia\botwhatsapp\tokens\agente-ia\Default\shared_proto_db/MANIFEST-000001
+2025/06/21-17:39:51.931 40f8 Reusing MANIFEST C:\projetos\agente_ia\botwhatsapp\tokens\agente-ia\Default\shared_proto_db/MANIFEST-000001
+2025/06/21-17:39:51.931 40f8 Recovering log #3
+2025/06/21-17:39:51.932 40f8 Reusing old log C:\projetos\agente_ia\botwhatsapp\tokens\agente-ia\Default\shared_proto_db/000003.log 

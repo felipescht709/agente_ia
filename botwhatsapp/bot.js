@@ -35,7 +35,7 @@ app.post('/send-whatsapp-message', async (req, res) => {
 // Inicia o servidor HTTP
 app.listen(PORT_BOT_API, () => {
   console.log(`Servidor API do Bot iniciado na porta ${PORT_BOT_API}`);
-  console.log(`Webhook para envio de mensagens do n8n: http://localhost:${PORT_BOT_API}/send-whatsapp-message`);
+  console.log(`Webhook para envio de mensagens do n8n: http://localhost:5678/workflow/ScKGEvA2V72WHzGc`);
 });
 
 // --- Configuração do Venom-Bot ---
@@ -64,7 +64,7 @@ function start(client) {
     }
 
     // --- ENVIAR MENSAGEM RECEBIDA PARA O N8N ---
-    const N8N_WEBHOOK_URL = 'http://localhost:5678/webhook/whatsapp-webhook'; // <-- SUBSTITUA PELA URL DO SEU WEBHOOK N8N DO WORKFLOW 1
+    const N8N_WEBHOOK_URL = 'http://localhost:5678/workflow/ScKGEvA2V72WHzGc'; // URL do webhook do n8n
 
     try {
       console.log('Enviando mensagem para o n8n...');

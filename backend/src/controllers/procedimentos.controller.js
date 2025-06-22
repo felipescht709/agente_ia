@@ -1,12 +1,12 @@
-const { PrismaClient } = require('@prisma/client');
+const { PrismaClient, TipoProcedimentoInterno } = require('@prisma/client'); // Importar TipoProcedimentoInterno
 const prisma = new PrismaClient();
 
 const ProcedimentosController = {
   async criar(req, res) {
-    const { id_clinica } = req.usuario;
+    const { id_clinica } = req.usuario; // id_clinica da clínica do usuário logado
     const {
       nome_procedimento,
-      tipo,
+      tipo, // Agora é String no schema
       valor,
       duracao_minutos,
       telemedicina = false,
@@ -14,6 +14,7 @@ const ProcedimentosController = {
     } = req.body;
 
     try {
+      // O nome do procedimento deve ser único APENAS dentro da clínica
       const existente = await prisma.procedimento.findFirst({
         where: {
           nome_procedimento,
@@ -22,13 +23,18 @@ const ProcedimentosController = {
       });
 
       if (existente) {
-        return res.status(400).json({ error: 'Procedimento já cadastrado.' });
+        return res.status(400).json({ error: 'Procedimento com este nome já cadastrado para esta clínica.' });
       }
+
+      // Opcional: Validar se o 'tipo' recebido é um dos valores do seu Enum interno
+      // if (!Object.values(TipoProcedimentoInterno).includes(tipo)) {
+      //   return res.status(400).json({ error: `Tipo de procedimento inválido. Valores permitidos: ${Object.values(TipoProcedimentoInterno).join(', ')}` });
+      // }
 
       const novo = await prisma.procedimento.create({
         data: {
           nome_procedimento,
-          tipo,
+          tipo, // 'tipo' é string, e será mapeado externamente se integrar com sistemas de gestão
           valor,
           duracao_minutos,
           telemedicina: Boolean(telemedicina),
@@ -51,7 +57,7 @@ const ProcedimentosController = {
     try {
       const procedimentos = await prisma.procedimento.findMany({
         where: {
-          id_clinica,
+          id_clinica, // Filtra por id_clinica
           ativo: true
         },
         orderBy: { nome_procedimento: 'asc' }
@@ -63,6 +69,7 @@ const ProcedimentosController = {
       return res.status(500).json({ error: 'Erro ao listar procedimentos.' });
     }
   },
+
   async detalhar(req, res) {
     const { id_clinica } = req.usuario;
     const { id } = req.params;
@@ -71,7 +78,7 @@ const ProcedimentosController = {
       const procedimento = await prisma.procedimento.findFirst({
         where: {
           id_procedimento: Number(id),
-          id_clinica,
+          id_clinica, // Filtra por id_clinica
           ativo: true
         }
       });
@@ -92,7 +99,7 @@ const ProcedimentosController = {
     const { id } = req.params;
     const {
       nome_procedimento,
-      tipo,
+      tipo, // Agora é String
       valor,
       duracao_minutos,
       telemedicina,
@@ -100,23 +107,43 @@ const ProcedimentosController = {
     } = req.body;
 
     try {
-      const procedimento = await prisma.procedimento.findFirst({
+      // Primeiro, verifica se o procedimento existe E pertence à clínica do usuário logado
+      const procedimentoExistente = await prisma.procedimento.findFirst({
         where: {
           id_procedimento: Number(id),
-          id_clinica,
+          id_clinica, // Filtra por id_clinica
           ativo: true
         }
       });
 
-      if (!procedimento) {
-        return res.status(404).json({ error: 'Procedimento não encontrado.' });
+      if (!procedimentoExistente) {
+        return res.status(404).json({ error: 'Procedimento não encontrado ou não pertence a esta clínica.' });
+      }
+
+      // Opcional: Validar se o 'tipo' recebido é um dos valores do seu Enum interno
+      // if (tipo && !Object.values(TipoProcedimentoInterno).includes(tipo)) {
+      //   return res.status(400).json({ error: `Tipo de procedimento inválido. Valores permitidos: ${Object.values(TipoProcedimentoInterno).join(', ')}` });
+      // }
+
+      // Se o nome_procedimento for alterado, verificar unicidade dentro da clínica
+      if (nome_procedimento && nome_procedimento !== procedimentoExistente.nome_procedimento) {
+        const nomeDuplicado = await prisma.procedimento.findFirst({
+          where: {
+            nome_procedimento,
+            id_clinica,
+            NOT: { id_procedimento: Number(id) } // Exclui o próprio procedimento da verificação
+          }
+        });
+        if (nomeDuplicado) {
+          return res.status(400).json({ error: 'Novo nome de procedimento já cadastrado para esta clínica.' });
+        }
       }
 
       const atualizado = await prisma.procedimento.update({
         where: { id_procedimento: Number(id) },
         data: {
           nome_procedimento,
-          tipo,
+          tipo, // Tipo agora é string
           valor,
           duracao_minutos,
           telemedicina: Boolean(telemedicina),
@@ -136,17 +163,33 @@ const ProcedimentosController = {
     const { id } = req.params;
 
     try {
+      // Primeiro, verifica se o procedimento existe E pertence à clínica do usuário logado
       const procedimento = await prisma.procedimento.findFirst({
         where: {
           id_procedimento: Number(id),
-          id_clinica,
+          id_clinica, // Filtra por id_clinica
           ativo: true
         }
       });
 
       if (!procedimento) {
-        return res.status(404).json({ error: 'Procedimento não encontrado.' });
+        return res.status(404).json({ error: 'Procedimento não encontrado ou já inativo.' });
       }
+
+      // Opcional: Verificar se o procedimento está associado a consultas futuras antes de inativar
+      // const consultasFuturas = await prisma.consultaProcedimento.count({
+      //   where: {
+      //     procedimento_id: Number(id),
+      //     consulta: {
+      //       data_hora_inicio: { gte: new Date() },
+      //       status: { in: ['AGENDADA', 'CONFIRMADA', 'PENDENTE_CONFIRMACAO'] }
+      //     }
+      //   }
+      // });
+      // if (consultasFuturas > 0) {
+      //   return res.status(400).json({ error: 'Não é possível inativar o procedimento: possui consultas futuras agendadas.' });
+      // }
+
 
       await prisma.procedimento.update({
         where: { id_procedimento: Number(id) },

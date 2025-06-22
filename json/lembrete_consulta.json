@@ -21,42 +21,42 @@
     },
     {
       "parameters": {
-        "url": "=http://localhost:4000/api/consultas/proximas",
+        "url": "http://host.docker.internal:4000/api/consultas/buscarProximasConsultas",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
-            }
-          ]
-        },
+        "headerParameters": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+          }
+        ],
         "sendQuery": true,
-        "queryParameters": {
-          "parameters": [
-            {
-              "name": "data",
-              "value": "={{ new Date(Date.now() + 24*60*60*1000).toISOString().split('T')[0] }}"
-            },
-            {
-              "name": "status",
-              "value": "AGENDADA"
-            }
-          ]
-        },
+        "queryParameters": [  
+          {
+            "name": "clientId",
+            "value": "minha_clinica_teste_id"
+          },
+          {
+            "name": "data",
+            "value": "={{ new Date(Date.now() + 24*60*60*1000).toISOString().split('T')[0] }}"
+          },
+          {
+            "name": "status",
+            "value": "AGENDADA"
+          }
+        ],
         "options": {}
       },
-      "id": "fetch-appointments",
+      "id": "buscar-consultas-amanha",
       "name": "Buscar Consultas Amanhã",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [460, 300],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "YOUR_BACKEND_API_AUTH_ID",
-          "name": "Backend API Auth"
+          "id": "hLqrUhAwdSuSf2LS",
+          "name": "AuthBackendClinica"
         }
       }
     },
@@ -65,7 +65,7 @@
         "batchSize": 1,
         "options": {}
       },
-      "id": "split-appointments",
+      "id": "dividir-consultas",
       "name": "Dividir Consultas",
       "type": "n8n-nodes-base.splitInBatches",
       "typeVersion": 3,
@@ -73,65 +73,87 @@
     },
     {
       "parameters": {
-        "phoneNumberId": "={{ $env.WHATSAPP_PHONE_ID }}",
-        "to": "={{ $json.paciente.telefone }}",
-        "message": "🔔 *Lembrete de Consulta*\\n\\n👋 Olá, {{ $json.paciente.nome }}!\\n\\n📅 Você tem uma consulta agendada para *amanhã*:\\n\\n🕐 *Horário:* {{ new Date($json.data).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}) }}\\n👨‍⚕️ *Profissional:* Dr(a). {{ $json.profissional.nomeProfissional }}\\n🏥 *Local:* {{ $json.telemedicina ? 'Telemedicina' : ($json.profissional.nomeConsultorio || 'Presencial - Verifique no agendamento') }}\\n\\n⚠️ *Lembrete importante:*\\n• Chegue 15 minutos antes\\n• Traga documento com foto\\n• Para cancelar, avise com 1 hora de antecedência\\n\\n📞 Dúvidas? {{ $env.CLINIC_PHONE }}\\n\\n✅ Responda *SIM {{ $json.id }}* para confirmar presença\\n❌ Responda *CANCELAR {{ $json.id }}* se não puder comparecer",
-        "additionalFields": {}
+        "url": "http://host.docker.internal:4000/api/whatsapp/sendMessage",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+          }
+        ],
+        "sendBody": true,
+        "bodyParameters": [  
+          {
+            "name": "clientId",
+            "value": "={{ $('Buscar Consultas Amanhã').first().json.clientId || 'minha_clinica_teste_id' }}"
+          },
+          {
+            "name": "to",
+            "value": "={{ $json.paciente.telefone }}"
+          },
+          {
+            "name": "message",
+            "value": "🔔 *Lembrete de Consulta*\\n\\n👋 Olá, {{ $json.paciente.nome }}!\\n\\n📅 Você tem uma consulta agendada para *amanhã*:\\n\\n🕐 *Horário:* {{ new Date($json.data_hora_inicio).toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'}) }}\\n👨‍⚕️ *Profissional:* Dr(a). {{ $json.profissional.nome_profissional }}\\n🏥 *Local:* {{ $json.telemedicina ? 'Telemedicina' : 'Presencial - Verifique no agendamento' }}\\n\\n⚠️ *Lembrete importante:*\\n• Chegue 15 minutos antes\\n• Traga documento com foto\\n• Para cancelar, avise com 1 hora de antecedência\\n\\n📞 Dúvidas? {{ $env.CLINIC_PHONE }}\\n\\n✅ Responda *SIM {{ $json.id_consulta }}* para confirmar presença\\n❌ Responda *CANCELAR {{ $json.id_consulta }}* se não puder comparecer"
+          }
+        ],
+        "options": {}
       },
-      "id": "send-reminder",
+      "id": "enviar-lembrete",
       "name": "Enviar Lembrete",
-      "type": "n8n-nodes-base.whatsApp",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [900, 300],
       "credentials": {
-        "whatsAppBusinessCloud": {
-          "id": "YOUR_WHATSAPP_CREDENTIAL_ID",
-          "name": "WhatsApp Business Cloud"
+        "httpHeaderAuth": {
+          "id": "hLqrUhAwdSuSf2LS",
+          "name": "AuthBackendClinica"
         }
       }
     },
     {
       "parameters": {
-        "url": "=http://localhost:4000/api/consultas/{{ $json.id }}/lembrete-enviado",
+        "url": "http://host.docker.internal:4000/api/consultas/{{ $json.id_consulta }}/lembrete-enviado",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "httpHeaderAuth",
         "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
-            },
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
+        "headerParameters": [
+          {
+            "name": "Authorization",
+            "value": "Bearer {{ $env.BACKEND_API_TOKEN }}"
+          },
+          {
+            "name": "Content-Type",
+            "value": "application/json"
+          }
+        ],
         "sendBody": true,
-        "bodyParameters": {
-          "parameters": [
-            {
-              "name": "lembrete_enviado",
-              "value": "true"
-            },
-            {
-              "name": "data_lembrete",
-              "value": "={{ new Date().toISOString() }}"
-            }
-          ]
-        },
+        "bodyParameters": [  
+          {
+            "name": "clientId",
+            "value": "={{ $('Buscar Consultas Amanhã').first().json.clientId || 'minha_clinica_teste_id' }}"
+          },
+          {
+            "name": "lembrete_enviado",
+            "value": "true"
+          },
+          {
+            "name": "data_lembrete",
+            "value": "={{ new Date().toISOString() }}"
+          }
+        ],
         "options": {}
       },
-      "id": "update-reminder-status",
+      "id": "atualizar-status-lembrete",
       "name": "Atualizar Status Lembrete",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [1120, 300],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "YOUR_BACKEND_API_AUTH_ID",
-          "name": "Backend API Auth"
+          "id": "hLqrUhAwdSuSf2LS",
+          "name": "AuthBackendClinica"
         }
       }
     }
